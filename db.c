@@ -144,11 +144,11 @@ Table* db_open(const char* filename);
 MetaCommandResult do_meta_command(InputBuffer* input_buffer, Table* table);
 PrepareResult prepare_statement(InputBuffer* input_buffer, Statement* statement);
 PrepareResult prepare_insert(InputBuffer* input_buffer, Statement* statement);
-ExecuteResult execute_statement(Statement* statement, Table* table);
+ExecuteResult execute_statement(Statement* statement, Table* table, InputBuffer* input_buffer);
 ExecuteResult execute_insert(Statement* statement, Table* table);
-ExecuteResult execute_select(Statement* statement, Table* table);
+ExecuteResult execute_select(Statement* statement, Table* table, InputBuffer* input_buffer);
 void read_input(InputBuffer* input_buffer);
-void print_row(Row* row);
+void print_row(Row* row, char* field);
 void print_prompt();
 ssize_t getline(char **lineptr, size_t *n, FILE *stream);
 InputBuffer* new_input_buffer();
@@ -240,7 +240,7 @@ PrepareResult prepare_statement(InputBuffer* input_buffer, Statement* statement)
     if (strncmp(input_buffer->buffer, "insert", 6) == 0) {
         return prepare_insert(input_buffer, statement);
     }
-    if (strcmp(input_buffer->buffer, "select") == 0) {
+    if (strncmp(input_buffer->buffer, "select", 6) == 0) {
         statement->type = STATEMENT_SELECT;
         return PREPARE_SUCCESS;
     }
@@ -248,18 +248,26 @@ PrepareResult prepare_statement(InputBuffer* input_buffer, Statement* statement)
 }
 
 // function to execute the statement
-ExecuteResult execute_statement(Statement* statement, Table* table) {
+ExecuteResult execute_statement(Statement* statement, Table* table, InputBuffer* input_buffer) {
     switch (statement->type) {
         case STATEMENT_INSERT:
             return execute_insert(statement, table);
         case STATEMENT_SELECT:
-            return execute_select(statement, table);
+            return execute_select(statement, table, input_buffer);
     }
 }
 
 // function to print a row
-void print_row(Row* row) {
-    printf("(%d, %s, %s)\n", row->id, row->username, row->email);
+void print_row(Row* row, char* field) {
+    if (strcmp(field, "id") == 0) {
+        printf("%d\n", row->id);
+    } else if (strcmp(field, "username") == 0) {
+        printf("%s\n", row->username);
+    } else if (strcmp(field, "email") == 0) {
+        printf("%s\n", row->email);
+    } else {
+        printf("(%d, %s, %s)\n", row->id, row->username, row->email);
+    }
 }
 
 // function to create new input buffer
@@ -523,13 +531,16 @@ ExecuteResult execute_insert(Statement* statement, Table* table) {
 }
 
 // function to execute the select statement
-ExecuteResult execute_select(Statement* statement, Table* table) {
+ExecuteResult execute_select(Statement* statement, Table* table, InputBuffer* input_buffer) {
     Cursor* cursor = table_start(table);
+
+    char* keyword = strtok(input_buffer->buffer, " ");
+    char* field = strtok(NULL, " ");
 
     Row row;
     while (!(cursor->end_of_table)) {
         deserialize_row(cursor_value(cursor), &row);
-        print_row(&row);
+        print_row(&row, field);
         cursor_advance(cursor);
     }
     free(cursor);
@@ -1107,7 +1118,6 @@ void internal_node_split_and_insert(Table* table, uint32_t parent_page_num, uint
     }
   }
 
-
 // main function
 int main(int argc, char* argv[]) {
     if (argc < 2) {
@@ -1152,7 +1162,7 @@ int main(int argc, char* argv[]) {
                 continue;
         }
 
-        switch (execute_statement(&statement, table)) {
+        switch (execute_statement(&statement, table, input_buffer)) {
             case (EXECUTE_SUCCESS):
                 printf("Executed.\n");
                 break;
